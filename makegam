@@ -1,0 +1,49 @@
+#!/bin/csh
+
+# Following code to calculate multiple exponential HRF of different TAU
+if ($# < 3) then
+echo "USAGE: $0:t TR step max"
+echo "TR is the time of repetition. it will make multiple gamma : t^0.547 * exp(-t/(8.6+n*step))"
+echo "EXAMPLE:  $0:t 2 2 30"
+exit
+endif
+
+# Cleaning
+rm -f MFUNC_gam.1D
+
+#--- USER INPUT -------------------
+#-- TR: time of repetition in sec
+set TR = $1
+
+# -- Tau Interval in sec --
+set step = $2
+
+# -- Maximum TAU in sec
+set max_b = $3
+
+set c = 0.547
+
+#--- In the following calculation
+# 5*$maxtau/$dt =>  exp(-5) is considered to be zero.
+# 2*$num2 => half of the function needs to be zeros for the convolution.
+
+set num1 = `echo "5*$max_b/$TR" | bc -l`
+set num2 = `echo "($num1+0.5)/1" | bc`
+set num3 = `echo "$num2 + 1" | bc`
+
+
+1deval -expr "0*t"  -dt $TR -num $num3 > func1.1D
+
+foreach b (`seq -f %.3f 0 $step $max_b`)
+    #1deval -expr "(1-equals($b,0)) * (t^$c)*(exp(-t/$b)) + equals(t,0)*equals($b,0)" -dt $TR -num $num2 > func2.1D
+    1deval -expr "notzero($b) * (t^$c)*(exp(-t/$b)) + iszero(t)*iszero($b)" -dt $TR -num $num2 > func2.1D
+    set C = `3dTstat -sum -prefix stdout func2.1D\' `
+    1deval -expr "(1/$C) * (notzero($b) * (t^$c)*(exp(-t/$b)) + iszero(t)*iszero($b))" -dt $TR -num $num2 > func2.1D
+    cat func1.1D func2.1D > tmp.1D
+    1dcat tmp.1D\{\$..0\} > func.1D
+    1dcat func.1D\' >> MTMP.1D
+end
+1dcat MTMP.1D\' > MFUNC0.1D
+1dcat MFUNC0.1D\[0..\$\] > MFUNC_gam.1D
+rm MTMP.1D func.1D MFUNC0.1D
+

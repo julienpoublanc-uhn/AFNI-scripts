@@ -1,0 +1,14 @@
+#!/bin/tcsh
+
+set line = `grep -n SliceTiming $1`
+set l = `echo $line[1] | cut -d":" -f1` 
+set j = `echo "$l - 1" | bc -l`
+@ l = $l + 1
+#cat $1 | tail +{$l}
+set n = `cat $1 | tail +{$l} | grep -n '"' | head -1`
+set n = `echo "$n[1]" | cut -d":" -f1` 
+@ n = $n - 1
+cat $1 | tail +{$l} | head -{$n} | tr -d ',' | cut -d']' -f1 | awk '{print $1}' > tpattern.1D
+
+
+

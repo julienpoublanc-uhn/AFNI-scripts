@@ -1,0 +1,38 @@
+#!/bin/tcsh
+
+if ($#argv == 0) then
+printred "The input file can be either NIFTI or AFNI format. All output will be in NIFTI"
+printred "Outputfile contain CNR and SNR"
+printred "USAGE: ${0:t} in=raw_bold.nii.gz/raw_bold+orig [out=CNR] start_baseline=3 end_baseline=70"
+exit
+endif
+
+# Default parameters
+setenv out CNR_SNR.nii.gz
+
+# Change default parameters for parameters inputed at command line
+foreach lst ($*)
+set option = `echo $lst | cut -d "=" -f1`
+set parameter = `echo $lst | cut -d "=" -f2`
+eval "setenv $option $parameter"
+end
+
+
+3dAutomask -prefix mask.nii.gz $in
+3dTstat -prefix meanbase.nii.gz $in\[$start_baseline..$end_baseline\]
+3dTstat -prefix mean.nii.gz $in
+3dTstat -stdev -prefix stdbase.nii.gz  $in\[$start_baseline..$end_baseline\]
+3dTstat -stdev -prefix std.nii.gz  $in
+
+3dcalc -a std.nii.gz -b stdbase.nii.gz -c mask.nii.gz -expr "a*c/b" -prefix cnr.nii.gz
+3dcalc -a meanbase.nii.gz -b stdbase.nii.gz -c mask.nii.gz -expr "a*c/b" -prefix snr.nii.gz
+3dcalc -a mean.nii.gz -b std.nii.gz -c mask.nii.gz -expr "a*c/b" -prefix tsnr.nii.gz
+
+
+3dbucket -prefix $out cnr.nii.gz snr.nii.gz
+3drefit -sublabel 0 CNR -sublabel 1 SNR $out
+
+rm mask.nii.gz meanbase.nii.gz mean.nii.gz stdbase.nii.gz std.nii.gz cnr.nii.gz snr.nii.gz
+
+
+

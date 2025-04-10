@@ -1,0 +1,45 @@
+#!/bin/tcsh
+
+
+if ($#argv == 0) then
+printred "The input file can be either NIFTI or AFNI format. All output will be in NIFTI"
+printred "USAGE: ${0:t} in=map.nii.gz/map+orig [subrick=0] [maskin=CVRmask] [min=0] [max=6] [nbin=100]  "
+exit
+endif
+
+
+# Change default parameters for parameters inputed at command line
+foreach lst ($*)
+set option = `echo $lst | cut -d "=" -f1`
+set parameter = `echo $lst | cut -d "=" -f2`
+eval "setenv $option $parameter"
+end
+
+if ($?maskin == 0) then
+set maskin = $in
+endif
+
+set opt_min = ""
+if ($?min == 1) then
+set opt_min = "-min $min"
+endif
+
+
+set opt_max = ""
+if ($?max == 1) then
+set opt_max = "-max $max"
+endif
+
+set opt_nbin = ""
+if ($?nbin == 1) then
+set opt_nbin = "-nbin $nbin"
+endif
+
+if ($?subrick == 0) then
+set subrick = 0
+endif
+
+
+3dhistog -mask $maskin $opt_nbin $opt_min $opt_max $in\[$subrick\] > hist.1D
+1dplot -x hist.1D\[0\] -thick -plabel Histogram -xlabel $in hist.1D\[1\]
+

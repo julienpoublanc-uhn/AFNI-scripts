@@ -1,0 +1,39 @@
+#!/bin/tcsh 
+
+# ALL THE QUESTIONS:
+echo -n "Prefix: "
+set ref = $<
+echo -n "First ON: "
+set st = $< 
+echo -n "ON period:   "
+set ON = $<
+echo -n "OFF period:   "
+set OFF = $<
+echo -n "TR (sec):    "
+set tr = $<
+echo -n "# of frames:    "
+set nfr = $<
+
+set line = (0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)
+set a0 = $st
+set a1 = `echo "$st + $ON" | bc -l`
+set line[1] = ${a0}:${a1}
+
+set n_max = `echo "((${tr} * ${nfr}) - (${st} + ${ON} + ${OFF})) / (${ON} + ${OFF}) + 10" | bc`
+
+
+
+
+
+@ n = 2
+while ($n <= $n_max)
+set a =  `echo "$st + ($n - 1) * ($ON + $OFF) "  | bc -l `
+set b =  `echo "$a + $ON "  | bc -l `
+set line[$n] = ${a}:${b}
+@ n = $n + 1
+end
+@ n = $n - 3
+
+echo $line
+waver  -GAM -peak 0.5 -numout $nfr -dt $tr -tstim $line[1-$n] > ${ref}.1D
+#1deval -a ${ref}_gam.1D -expr "step(a-0.51)" > ${ref}_square.1D

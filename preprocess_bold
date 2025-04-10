@@ -1,0 +1,89 @@
+#!/bin/tcsh
+
+
+if ($#argv == 0) then
+printred "The input file can be either NIFTI or AFNI format. All output will be in NIFTI"
+printred "Brackets means optional"
+printred "USAGE: ${0:t} in=CVR0.nii.gz/CVR0+orig [out=CVR] [maskin=CVRmask.nii.gz/CVRmask+orig] [tcat=3] [despike] [tshift] [vreg] [slorder=seqplus/altplus/@tpatternfile.1D ...] [blur=3] [scale] [tsmooth=3/5/7...] [keepfiles]"
+exit
+endif
+
+# Default parameters
+setenv out bold_preprocessed
+setenv maskout mask
+
+# Change default parameters for parameters inputed at command line
+foreach lst ($*)
+set option = `echo $lst | cut -d "=" -f1`
+set parameter = `echo $lst | cut -d "=" -f2`
+eval "setenv $option $parameter"
+end
+
+# Extract the prefix for in and out files
+set prefix_in = `basename $in:r:r +orig`
+
+# Make a mask if it does not exist
+if ($?maskin == 0) then
+3dAutomask -prefix mask.nii $in
+set maskin = mask.nii
+endif
+
+
+# Take the basename of the output file name
+set basename_out = `basename ${out:r:r} +orig`
+
+# Remove first few frames
+if ($?tcat == 1) then
+@ tcat = $tcat - 1
+3dTcat -prefix ${prefix_in}_cat.nii $in\[$tcat..\$\] ; set in = ${prefix_in}_cat.nii
+endif
+
+# Despiking the BOLD signal
+if ($?despike == 1) then
+3dDespike -NEW25 -prefix ${prefix_in}_des.nii $in ; set in = ${prefix_in}_des.nii
+endif
+
+# Slice time correction
+if ($?tshift == 1) then
+    if ($?slorder == 0) then
+        3dTshift -prefix ${prefix_in}_tsh.nii $in ; set in = ${prefix_in}_tsh.nii
+    else if ($?slorder == 1) then
+        3dTshift -prefix ${prefix_in}_tsh.nii -tpattern $slorder $in ; set in = ${prefix_in}_tsh.nii
+    endif
+endif
+
+# Volume re-registration
+if ($?vreg == 1) then
+3dvolreg -clipit -1Dfile ${out:r:r}_mot.1D -prefix ${prefix_in}_reg.nii $in ; set in = ${prefix_in}_reg.nii
+endif
+
+# Blurring
+if ($?blur == 1)     then
+3dBlurInMask -prefix ${prefix_in}_blr.nii -mask ${maskin} -FWHM $blur $in ; set in = ${prefix_in}_blr.nii
+endif
+
+# Smoothing in time
+if ($?tsmooth == 1)  then
+3dTsmooth -adaptive $tsmooth -prefix ${prefix_in}_tsm.nii $in ; set in = ${prefix_in}_tsm.nii
+endif
+
+# Masking the result
+3dcalc -float -a $in -b ${maskin} -expr "a*b" -prefix ${out}
+
+
+# Scaling the signal to percent
+if ($?scale == 1)  then
+3dTstat -prefix ${prefix_in}_ave.nii ${out}
+3dcalc -a ${out} -b ${prefix_in}_ave.nii  -expr "100*a/b" -prefix ${basename_out}_scl.nii.gz
+endif
+
+if ($?keepfiles   == 0)  then
+rm -f \
+${prefix_in}_des.nii \
+${prefix_in}_cat.nii \
+${prefix_in}_tsh.nii \
+${prefix_in}_reg.nii \
+${prefix_in}_blr.nii \
+${prefix_in}_tsm.nii \
+${prefix_in}_ave.nii
+endif

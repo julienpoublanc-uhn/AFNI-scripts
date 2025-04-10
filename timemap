@@ -1,0 +1,105 @@
+ #!/bin/tcsh
+
+if ($#argv == 0) then
+printred "The input file can be either NIFTI or AFNI format. All output will be in NIFTI"
+printred "USAGE: ${0:t} in=CVR0.nii.gz/CVR0+orig out=TAU mask=CVRmask+orig/CVRmask.nii.gz ref=pco2_0.1D polort=1 type=[tau/shift] min_time=0 max_time=100 step=2 cleanfiles"
+exit
+endif
+
+
+# Change default parameters for parameters inputed at command line
+foreach lst ($*)
+set option = `echo $lst | cut -d "=" -f1`
+set parameter = `echo $lst | cut -d "=" -f2`
+eval "setenv $option $parameter"
+end
+
+
+# Extract the prefix for in files
+set prefix_in = `basename $in:r:r +orig`
+
+# Check options and set defaults
+# Make a mask if it does not exist
+if ($?polort == 0) then
+set polort = 1
+endif
+
+if ($?mask == 0) then
+3dAutomask -prefix ${prefix_in}_mask.nii.gz $in
+set mask = ${prefix_in}_mask.nii.gz
+endif
+
+if ($?type == 0) then
+set type = tau
+endif
+
+set n_ref = `echo "((${max_time})-(${min_time}))/$step" | bc`
+set TR = `3dinfo -TR $in`
+rm -f I_best+orig* R+orig* B+orig* R_best+orig*
+
+
+if ($type == "tau") then
+#--- make the FILTER FUNCTION
+makeexp $TR $step $max_time
+
+# Calculate the convolved ref waveforms
+rm -f tmpref1.1D
+foreach n (`seq -f %02g 0 ${n_ref}`)
+3dTsmooth -custom MFUNC.1D\[$n\] {$ref}\'
+cat smooth.1D | grep -v "#" >> tmpref1.1D
+echo "----------------------------------------------$n"
+end
+1dcat tmpref1.1D\' > ${ref:r}w.1D
+set ref_multi = ${ref:r}w.1D
+else
+# Calculate the shifted ref wave forms
+shift1D ${ref} $min_time $step $max_time $TR
+set ref_multi = ${ref:r}_sh.1D
+endif
+
+###################################################################################
+
+# Clean data generated using 3dbucket -aglueto
+rm -f R+orig*
+rm -f B+orig*
+
+foreach n (`seq -f %02g 0 ${n_ref}`)
+3dDeconvolve -mask ${mask} -input ${in} -polort ${polort} -num_stimts 1 \
+-stim_file 1 ${ref_multi}\[$n\] -rout -bout \
+-bucket tmp \
+-jobs 16
+
+#tmp+orig\[0\] is the full R^2. Brick 5 would be partial R^2 for the stimulus
+3dbucket -aglueto R+orig tmp+orig\[0\]
+3dbucket -aglueto B+orig tmp+orig\[4\]
+echo "=============================================================================================================$n"
+end
+
+# Extract best index and best correlation -- a*$step+$min_time+0.01 : added 0.01 so we don't get and deal with staright 0
+3dTstat -prefix R_best -max    R+orig
+3dTstat -prefix I_best -argmax R+orig
+3dcalc -a I_best+orig -expr "a*$step+$min_time+0.01" -prefix T_best
+
+# Extract/calculate best fit coef
+3dcalc -a B+orig -b I_best+orig -expr "a*equals(l,b)" -prefix tmp
+3dTstat -prefix B_best -signed_absmax tmp+orig
+
+# Extract/calculate best % change by multiplying b*range.of.regressor
+3dTstat -min -max ${ref_multi}\'
+1deval -a stat.1D\[0\] -b stat.1D\[1\] -expr "b-a" > range.1D
+3dcalc -a range.1D -b I_best+orig -c B_best+orig -expr "a*equals(l,b)*c" -prefix tmp
+3dTstat -prefix %_best -max tmp+orig
+
+# Converting R^2 to r
+3dcalc -a R_best+orig -b B_best+orig -expr "(ispositive(b)-isnegative(b))*sqrt(a)" -prefix r_best
+
+# Make a signed TAU/TD
+3dcalc -a T_best+orig -b B_best+orig -expr "(ispositive(b)-isnegative(b))*a" -prefix T_best_signed
+3dbucket -prefix ${out}.nii.gz  B_best+orig T_best_signed+orig T_best+orig %_best+orig r_best+orig
+3drefit -relabel_all_str 'Fit Time_signed Time %_change Corr' ${out}.nii.gz
+rm -f range.1D MFUNC.1D smooth.1D stat.1D I_best+* R+orig* r+orig* \
+B+orig* R_best+orig* B_best+orig* T_best*+orig* tmp+orig* %_best+orig* r_best+orig*
+3dDeconvolve.err tmp.REML_cmd tmp.xmat.1D
+
+
+necho 3

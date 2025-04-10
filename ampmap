@@ -1,0 +1,101 @@
+#!/bin/tcsh
+
+if ($#argv == 0) then
+echo ""
+printred "This program is used to calculate the amplitude of a BOLD time series using an input regressor"
+printred "Brackets means optional"
+printgreen "$0:t [in=CVR_raw_scaled+orig/CVR_raw_scaled.nii[.gz]] [out=CVR_slope] [maskin=CVRmask] ref=pco2_0.1D [polort=1] [motfile=CVR_mot.1D] [motselect=0,1,2,4] [start=10] [end=200]"
+exit
+endif
+
+
+# Change default parameters for parameters inputed at command line
+foreach lst ($*)
+set option = `echo $lst | cut -d "=" -f1`
+set parameter = `echo $lst | cut -d "=" -f2`
+eval "setenv $option $parameter"
+end
+
+if !($?start) then
+set start  = 0
+endif
+
+if !($?out) then
+set out = regress_slope
+endif
+
+if !($?end) then
+set end = `3dinfo -nti ${in}`
+endif
+
+# Extract the prefix for in and out files
+set prefix_in = `basename $in:r:r +orig`
+
+if ($?mask) then
+set mask = "-mask $maskin"
+else
+set mask = ""
+endif
+
+if ($?polort) then
+set polort_opt = "-polort $polort"
+else
+set polort_opt = ""
+endif
+
+
+if ($?motselect) then
+1d_tool.py -infile $motfile -select_cols ${motselect} -write ${motfile:r}_${motselect}.1D -overwrite
+set motfile = ${motfile:r}_${motselect}.1D
+set mot_info = ${motselect}
+else
+set motselect = '0,1,2,3,4,5'
+set mot_info = ${motselect}
+endif
+
+
+if ($?motfile) then
+1d_tool.py -infile $motfile -select_rows "${start}..${end}" -write ${motfile:r}_section_${start}_${end}.1D -overwrite
+set motfile = ${motfile:r}_section_${start}_${end}.1D
+set mot_opt = "-ortvec ${motfile} motion"
+else
+set mot_opt = ""
+set mot_info = "no"
+endif
+
+3dDeconvolve \
+-input ${in}\[${start}..${end}\] \
+${mask} \
+-num_stimts 1 \
+-stim_file 1 ${ref}\{${start}..${end}\} \
+-stim_label 1 ${ref} \
+${polort_opt} \
+${mot_opt} \
+-rout -bout \
+-bucket deconv.nii.gz \
+-jobs 16
+
+
+
+set b =   `3dinfo -label2index ${ref}\#0_Coef deconv.nii.gz`
+set rsq = `3dinfo -label2index ${ref}_R^2 deconv.nii.gz`
+
+
+
+# Extract/calculate best % change by multiplying range.of.regressor
+3dTstat -min -max ${ref}\{${start}..${end}\}\'
+set range = `1deval -a stat.1D\[0\] -b stat.1D\[1\] -expr "b-a"`
+3dcalc -a deconv.nii.gz\[$b\] -expr "${range}*a" -prefix %_change.nii.gz
+
+# Converting R^2 to R
+3dcalc -a deconv.nii.gz\[$rsq\] -b deconv.nii.gz\[$b\] -expr "(ispositive(b)-isnegative(b))*sqrt(a)" -prefix Corr.nii.gz
+
+# Glue all together
+3dbucket -prefix ${out}.nii.gz deconv.nii.gz\[$b\] %_change.nii.gz  Corr.nii.gz
+3drefit -relabel_all_str 'Fit %_change Corr' ${out}.nii.gz
+
+3dNotes -h  "Using $mot_info motion parameters" ${out}.nii.gz
+
+rm -f %_change.nii.gz range.1D Corr.nii.gz deconv.nii.gz
+
+necho 3

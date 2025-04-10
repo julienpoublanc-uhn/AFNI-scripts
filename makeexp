@@ -1,0 +1,43 @@
+#!/bin/csh
+
+# Following code to calculate multiple exponential HRF of different TAU
+if ($# < 3) then
+echo "USAGE: $0:t TR dtau maxtau"
+echo "TR is the time of repetition, dtau is the interval between different TAU and maxtau is the maximum tau value desired"
+echo "EXAMPLE:  $0:t 2 2 100"
+exit
+endif
+
+# Cleaning
+rm -f MFUNC.1D
+
+#--- USER INPUT -------------------
+#-- dt: time of repetition in sec
+set dt = $1
+
+# -- Tau Interval in sec --
+set dtau = $2
+
+# -- Maximum TAU in sec
+set maxtau = $3
+
+#--- In the following calculation
+# 5*$maxtau/$dt =>  exp(-5) is considered to be zero.
+# 2*$num2 => half of the function needs to be zeros for the convolution.
+
+set num1 = `echo "5*$maxtau/$dt" | bc -l`
+set num2 = `echo "($num1+0.5)/1" | bc`
+set num = `echo "2*$num2 + 1" | bc`
+set Whalf = `echo "(($num - 1)/2)*$dt" | bc`
+
+#foreach tau (`jot -p3 - 0 $maxtau $dtau`)
+foreach tau (`seq -f %.3f 0 $dtau $maxtau`)
+
+1deval -expr "(exp(+(t-$Whalf)/$tau))*within(-(t-$Whalf),0,5*$tau)" -dt $dt -num $num > func.1D
+set C = `3dTstat -sum -prefix stdout func.1D\' `
+1deval -expr "(1/$C)*(exp(+(t-$Whalf)/$tau))*within(-(t-$Whalf),0,5*$tau)" -dt $dt -num $num > func.1D
+1dcat func.1D\' >> MTMP.1D
+end
+1dcat MTMP.1D\' > MFUNC.1D
+rm MTMP.1D func.1D
+

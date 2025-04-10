@@ -1,0 +1,39 @@
+#!/bin/csh
+
+if ($#argv == 0) then
+printred "This script generates multiple shifted versions of a single time series."
+printred "USAGE: ${0:t} ref.1D min_time step max_time TR"
+printred "USAGE: ${0:t} pco2_0.1D -2 0.2 8 2"
+exit
+endif
+
+
+set ref = $1
+set min_time = $2
+set step = $3
+set max_time = $4
+set TR = $5
+
+
+set n_ref = `echo "((${max_time})-(${min_time}))/$step" | bc`
+# Calculate the shifted ref wave forms
+# Pad the reference with 100 times the same value before and after
+yes `head -1 ${ref}` | head -100 > padbefore.1D
+yes `tail -1 ${ref}` | head -100 > padafter.1D
+cat padbefore.1D ${ref} padafter.1D > refpaded.1D
+cp refpaded.1D tmp.1D
+foreach n (`seq 1 $n_ref`)
+paste refpaded.1D tmp.1D > tmp2.1D
+cp tmp2.1D tmp.1D
+end
+rm tmp2.1D
+seq $min_time $step $max_time > voxshift.1D
+3dTshift -linear -no_detrend -prefix tmp2.1D -tzero 0 -TR $TR -voxshift voxshift.1D tmp.1D\'
+1dcat tmp2.1D\' > tmp3.1D
+set n = `wc -l ${ref} | cut -w -f2`
+echo $n
+@ e = $n + 100 - 1
+1dcat tmp3.1D\{100..$e\} > ${ref:r}_sh.1D
+
+# Cleaning up.
+rm -f padbefore.1D padafter.1D refpaded.1D tmp*.1D voxshift.1D 
