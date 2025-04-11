@@ -1,0 +1,35 @@
+If you ever want to check your branches, you can run this command in your local repo to verify:
+git branch -a
+git branch -m master main	Rename local branch
+git push -u origin main	Push new branch
+git push origin --delete master	(Optional) Delete old master on GitHub
+
+# To update my scripts
+git add .
+git commit -m "descriptive message"
+git push
+
+
+Think of a repository like a folder for a full project.
+
+Repository	What goes inside
+AFNI-scripts	Bash or Python scripts specifically for AFNI workflows.
+CVR-tools	Scripts (bash, python, whatever) related to Cerebrovascular Reactivity.
+fMRI-analysis	Programs for general fMRI preprocessing or analysis.
+GUI-tool	Your python graphical interface tool.
+
+Term	Simple meaning
+Repository (repo)	A folder/project with full history (e.g., fMRI-tools)
+Branch	A parallel timeline/version of a repo (e.g., main, experiment-feature)
+Commit	A save point or snapshot (e.g., "Fixed bug in script")
+Push	Send your changes to GitHub
+Pull	Get updates from GitHub to your computer
+Clone	Make a full copy of a repo on your computer
+
+
+Short Plan for You
+One GitHub repo for each different kind of tool or project.
+One branch main for each repo.
+Update normally (add, commit, push) as you modify.
+If you want, you can later learn about branching when you make bigger updates or experiments.
+
